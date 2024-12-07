@@ -1,0 +1,518 @@
+<!DOCTYPE html><html><head><base href=".">
+<meta charset="UTF-8">
+<title>Карта с уведомлениями</title>
+<script src="https://api-maps.yandex.ru/2.1/?apikey=ваш_API_ключ&amp;lang=ru_RU" type="text/javascript"></script>
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: Arial, sans-serif;
+        background: #f0f0f0;
+    }
+
+    .container {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 20px;
+        padding: 20px;
+        height: 100vh;
+    }
+
+    #map {
+        width: 100%;
+        height: 60vh;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .notifications {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        height: 60vh;
+        display: grid;
+        grid-template-columns: 100px 1fr;
+        gap: 15px;
+    }
+
+    /* Меню уведомлений */
+    .notification-menu {
+        /* border-right: 1px solid #eee; */
+    }
+
+    .menu-item {
+        padding: 10px;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin-bottom: 5px;
+        margin-top: 10px;
+        border-radius: 5px;
+        width: 120px;
+    }
+
+    .menu-item:hover {
+        opacity: 0.8;
+    }
+
+    .menu-item.in_process { background: #ff9000; color: white; }
+    .menu-item.new { background: green; color: white; }
+    .menu-item.done { background: #c6c6c6; color: white; }
+
+    /* Колонка уведомлений */
+    .notification-column {
+        padding: 10px;
+        overflow-y: auto;
+    }
+
+    .notification-item {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        transition: all 0.3s;
+        margin-bottom: 5px;
+        display: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+    .notification-item.visible {
+        display: block;
+    }
+
+    .notification-item[data-category*="in_process"] {
+        border-left: 4px solid #ff9000;
+    }
+
+    .notification-item[data-category*="new"] {
+        border-left: 4px solid green;
+    }
+
+    .notification-item[data-category*="done"] {
+        border-left: 4px solid #c6c6c6;
+    }
+
+    .notification-item:hover {
+        background: #f5f5f5;
+    }
+
+    .event-modal {
+        padding: 20px;
+    }
+
+    .event-details {
+        margin-top: 20px;
+    }
+
+    .event-details img {
+        width: 100%;
+        max-width: 400px;
+        height: 300px;
+        object-fit: cover;
+        border-radius: 8px;
+        margin-bottom: 15px;
+    }
+
+    .status-group {
+        margin-top: 15px;
+    }
+
+    .status-group label {
+        display: block;
+        margin: 10px 0;
+        cursor: pointer;
+    }
+
+    .blocks-container {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+
+    .block {
+        height: 80%;
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        cursor: pointer;
+        transition: transform 0.3s;
+    }
+
+    .block:hover {
+        transform: translateY(-5px);
+    }
+
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+    }
+
+    .modal-content {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        width: 80%;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .close {
+        position: absolute;
+        right: 20px;
+        top: 20px;
+        cursor: pointer;
+        font-size: 24px;
+    }
+
+    #camera-feed {
+        width: 100%;
+        max-width: 400px;
+        height: 300px;
+        background: #ddd;
+        margin: 15px 0;
+        border-radius: 8px;
+    }
+</style>
+</head>
+<body>
+<script>
+    const notifications = [];
+
+    function fetchNotifications() {
+        const apiUrl = "http://127.0.0.1:8000/";
+
+        fetch(apiUrl)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Ошибка запроса: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Сохранение данных в локальную константу
+                notifications.length = 0; // Очищаем массив перед добавлением новых данных
+                notifications.push(...data);
+                console.log("Уведомления обновлены:", notifications);
+
+                // Вызов функции для обновления UI (если нужно)
+                updateNotifications(notifications);
+            })
+            .catch(error => {
+                console.error("Ошибка получения данных:", error);
+            });
+    }
+
+    // Функция для обновления списка уведомлений
+    function updateNotifications(notifications) {
+        const notificationColumn = document.querySelector('.notification-column');
+        notificationColumn.innerHTML = ''; // Очистить старые уведомления
+
+        notifications.forEach((notification, index) => {
+            const item = document.createElement('div');
+            item.className = 'notification-item visible';
+            item.dataset.category = 'new';
+            item.textContent = `${notification.type}: ${notification.coordinates}`;
+            item.addEventListener('click', () => showEventDetails(index + 1));
+            notificationColumn.appendChild(item);
+        });
+
+        const notificationModal = document.querySelector('.notification-modal');
+        notificationModal.innerHTML = ''; // Очистить старые уведомления
+
+        notifications.forEach((notification, index) => {
+            const item = document.createElement('div');
+            item.className = 'notification-item visible';
+            item.dataset.category = 'new';
+            item.textContent = `${notification.type}: ${notification.coordinates}`;
+            notificationModal.appendChild(item);
+        });
+
+        console.log("Уведомления обновлены:", notifications);
+    }
+
+    // Вызов функции для получения уведомлений при загрузке страницы
+    document.addEventListener("DOMContentLoaded", fetchNotifications);
+
+    // Функция для отображения подробностей события (уже в вашем коде)
+    function showEventDetails(eventId) {
+        alert(`Выбрано событие ID: ${eventId}`);
+    }
+</script>
+
+<div class="container">
+    <div id="map"></div>
+
+
+    <div class="notifications">
+        <div class="notification-menu">
+            <div class="menu-item in_process active" data-type="in_process">В работе</div>
+            <div class="menu-item new" data-type="new">Новые</div>
+            <div class="menu-item done" data-type="done">Завершенные</div>
+        </div>
+        
+
+        <div class="notification-column">
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(1)">Внеплановый ремонт дороги на ул. Ленина</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(2)">Открытие новой станции метро</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(3)">Праздничный концерт в парке</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(4)">Перекрытие центральной площади</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(5)">Запуск нового автобусного маршрута</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(6)">Городской фестиваль еды</div>
+        </div>
+    </div>
+
+    <div class="blocks-container">
+        <div class="block" onclick="openModal('modal1')">
+            <h3>Список мероприятий</h3>
+            <p>Нажмите для просмотра событий и мероприятий</p>
+        </div>
+        <div class="block" onclick="openModal('modal2')">
+            <h3>Дорожная ситуация</h3>
+            <p>Информация о пробках и ремонтных работах</p>
+        </div>
+        <script src="https://static.elfsight.com/platform/platform.js" async></script>
+        <div class="elfsight-app-9e6506d2-f44e-418f-98dc-6b6a71d23916" data-elfsight-app-lazy></div>
+    </div>
+</div>
+
+<!-- Event Details Modal -->
+<div id="eventModal" class="modal">
+    <div class="modal-content event-modal" style="width: 60%; max-width: 800px;">
+    <span class="close" onclick="closeEventModal()">×</span>
+    <h2 id="event-title"></h2>
+    <div class="event-details">
+        <div style="display: flex; gap: 20px;">
+            <div style="flex: 1;">
+                <div id="map-modal" style="width: 100%; height: 300px;"></div>
+                <h3>Адрес: <span id="event-address"></span></h3>
+            </div>
+            <div class="status-group" style="min-width: 200px;">
+                <h3>Статус события:</h3>
+                <label>
+                    <input type="radio" name="status" value="new"> Новое
+                </label>
+                <label>
+                    <input type="radio" name="status" value="processing"> В обработке
+                </label>
+                <label>
+                    <input type="radio" name="status" value="completed"> Выполнено
+                </label>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Other modals -->
+<div id="modal1" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('modal1')">×</span>
+        <h2>Список мероприятий</h2>
+        <br>
+        <br>
+        <div id="events-info">
+            <h3>Спортивные мероприятия:</h3>
+            <p>19:30 - Краснодар-Локомотив, ул. Разведчика Леонова, 1</p>
+            <br>
+            <h3>Культурные мероприятия</h3>
+            <p>20:00 - открытый микрофон, ул. Калинина, 269</p>
+        </div>
+    </div>
+</div>
+
+<div id="modal2" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('modal2')">×</span>
+        <h2>Дорожная ситуация</h2>
+        <div class="notification-modal">
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(1)">Внеплановый ремонт дороги на ул. Ленина</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(2)">Открытие новой станции метро</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(3)">Праздничный концерт в парке</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(4)">Перекрытие центральной площади</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(5)">Запуск нового автобусного маршрута</div>
+            <div class="notification-item visible" data-category="all new" onclick="showEventDetails(6)">Городской фестиваль еды</div>
+        </div>
+    </div>
+</div>
+
+<div id="modal3" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('modal3')">×</span>
+        <h2>Погодные условия</h2>
+        <div id="weather-info">
+            <h3>Сегодня:</h3>
+            <p>Температура: -2°C</p>
+            <p>Влажность: 78%</p>
+            <p>Ветер: 5 м/с</p>
+            <p>Предупреждение: возможен гололед</p>
+        </div>
+    </div>
+</div>
+
+<script>
+      ymaps.ready(init);
+
+      function init() {
+          // Создание карты
+          var map = new ymaps.Map("map", {
+              center: [45.0700, 38.976], // Москва (широта, долгота)
+              zoom: 9                   // Масштаб карты
+          });
+
+
+          map.geoObjects.add(placemark);
+      }
+
+    const eventDetails = {
+        1: {
+            title: "краснодар-локомотив 19:30",
+            address: "ул. Ленина, 25",
+            status: "processing"
+        },
+        2: {
+            title: "Открытие новой станции метро",
+            address: "пр. Мира, 100",
+            status: "new"
+        },
+        3: {
+            title: "Праздничный концерт в парке",
+            address: "Центральный парк",
+            status: "completed"
+        },
+        4: {
+            title: "Перекрытие центральной площади",
+            address: "Центральная площадь",
+            status: "processing"
+        },
+        5: {
+            title: "Запуск нового автобусного маршрута",
+            address: "Автовокзал",
+            status: "new"
+        },
+        6: {
+            title: "Городской фестиваль еды",
+            address: "пл. Революции",
+            status: "new"
+        }
+    };
+
+    function showEventDetails(eventId) {
+        const notification = notifications[eventId - 1]; // Уведомление по индексу (если ID совпадает с порядковым номером)
+        
+        if (!notification) {
+            alert("Событие не найдено");
+            return;
+        }
+
+        // Обновление заголовка и адреса
+        document.getElementById('event-title').textContent = notification.type;
+        document.getElementById('event-address').textContent = `${notification.description} (Координаты: ${notification.coordinates.join(", ")})`;
+
+        // Очистка старой карты
+        const mapContainer = document.getElementById('map-modal');
+        mapContainer.innerHTML = '';
+
+        // TODO: aaa
+        ymaps.ready(() => {
+            const map = new ymaps.Map("map-modal", {
+                center: notification.coordinates,
+                zoom: 14,
+                controls: ["zoomControl", "fullscreenControl"]
+            });
+
+            const placemark = new ymaps.Placemark(notification.coordinates, {
+                hintContent: notification.type,
+                balloonContent: notification.description
+            });
+
+            map.geoObjects.add(placemark);
+
+            // Геокодируем координаты, чтобы получить адрес
+            ymaps.geocode(notification.coordinates).then((res) => {
+                const firstGeoObject = res.geoObjects.get(0);
+
+                // Получение адреса
+                const address = firstGeoObject ? firstGeoObject.getAddressLine() : "Адрес не найден";
+
+                // Добавляем адрес в содержимое балуна
+                placemark.properties.set('balloonContent', `
+                    <strong>${notification.description}</strong><br>
+                    Адрес: ${address}
+                `);
+            }).catch((err) => {
+                console.error("Ошибка геокодирования:", err);
+            });
+        });
+
+        // Показ модального окна
+        document.getElementById('eventModal').style.display = 'block';
+    }
+
+    function closeEventModal() {
+        document.getElementById('eventModal').style.display = 'none';
+    }
+
+    function openModal(modalId) {
+        document.getElementById(modalId).style.display = "block";
+    }
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).style.display = "none";
+    }
+
+    window.onclick = function(event) {
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = "none";
+        }
+    }
+
+    document.querySelectorAll('input[name="status"]').forEach(radio => {
+        radio.addEventListener('change', (event) => {
+            const newStatus = event.target.value;
+            const eventId = document.getElementById('event-title').dataset.eventId; // Храните ID события
+            const notificationIndex = notifications.findIndex(n => n.id === Number(eventId));
+
+            if (notificationIndex !== -1) {
+                notifications[notificationIndex].status = newStatus;
+
+                // Обновить UI после изменения
+                updateNotifications(notifications);
+            }
+        });
+    });
+
+    document.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', function() {
+            document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+            this.classList.add('active');
+            
+            const filterType = this.dataset.type;
+            
+            document.querySelectorAll('.notification-item').forEach(notification => {
+                const categories = notification.dataset.category.split(' ');
+                if (filterType === 'all' || categories.includes(filterType)) {
+                    notification.classList.add('visible');
+                } else {
+                    notification.classList.remove('visible');
+                }
+            });
+        });
+    });
+</script>
+
+</body></html>
