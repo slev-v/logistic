@@ -193,6 +193,16 @@
 <script>
     const notifications = [];
 
+    // Словарь для перевода типов инцидентов
+    const incidentTypeMapping = {
+        accident: "ДТП",
+        roadwork: "Дорожные работы",
+        traffic: "Пробка",
+        hazard: "Опасность",
+        clozure: "Перекрытие",
+        other: "Другое"
+    };
+
     function fetchNotifications() {
         const apiUrl = "http://127.0.0.1:8000/";
 
@@ -204,9 +214,20 @@
                 return response.json();
             })
             .then(data => {
+                // Преобразование данных в подходящий формат
+                const transformedData = data.map(([id, details]) => ({
+                    id,
+                    type: incidentTypeMapping[details.incident_type] || "Неизвестно", // перевод типа
+                    severity: details.severity, // серьезность
+                    time: details.time, // время
+                    description: details.description, // описание
+                    coordinates: `${details.latitude}, ${details.longitude}`, // координаты
+                    status: details.status // статус
+                }));
+
                 // Сохранение данных в локальную константу
                 notifications.length = 0; // Очищаем массив перед добавлением новых данных
-                notifications.push(...data);
+                notifications.push(...transformedData);
                 console.log("Уведомления обновлены:", notifications);
 
                 // Вызов функции для обновления UI (если нужно)
@@ -224,10 +245,14 @@
 
         notifications.forEach((notification, index) => {
             const item = document.createElement('div');
-            item.className = 'notification-item visible';
-            item.dataset.category = 'new';
-            item.textContent = `${notification.type}: ${notification.coordinates}`;
-            item.addEventListener('click', () => showEventDetails(index + 1));
+            item.className = `notification-item visible`;
+            item.dataset.category = notification.status;
+            item.dataset.eventId = notification.id; // добавляем ID события
+            item.textContent = `${notification.type} ${notification.coordinates}`;
+
+            console.log('Создан элемент уведомления:', item);
+
+            item.addEventListener('click', () => showEventDetails(notification.id));
             notificationColumn.appendChild(item);
         });
 
@@ -236,21 +261,28 @@
 
         notifications.forEach((notification, index) => {
             const item = document.createElement('div');
-            item.className = 'notification-item visible';
-            item.dataset.category = 'new';
-            item.textContent = `${notification.type}: ${notification.coordinates}`;
+            item.className = `notification-item visible severity-${notification.severity}`;
+            item.dataset.category = notification.status;
+            item.dataset.eventId = notification.id; // добавляем ID события
+            item.textContent = `${notification.type} ${notification.coordinates}`;
             notificationModal.appendChild(item);
         });
 
-        console.log("Уведомления обновлены:", notifications);
+        console.log("Уведомления обновлены в UI:", notifications);
     }
 
     // Вызов функции для получения уведомлений при загрузке страницы
     document.addEventListener("DOMContentLoaded", fetchNotifications);
 
-    // Функция для отображения подробностей события (уже в вашем коде)
     function showEventDetails(eventId) {
-        alert(`Выбрано событие ID: ${eventId}`);
+        console.log("Идентификатор события:", eventId);
+        const event = notifications.find(notification => notification.id === eventId);
+        if (event) {
+            alert(`Событие: ${event.type}\nОписание: ${event.description}\nВремя: ${event.time}\nКоординаты: ${event.coordinates}`);
+        } else {
+            console.error("Событие не найдено в массиве notifications:", notifications);
+            alert(`Событие с ID ${eventId} не найдено`);
+        }
     }
 </script>
 
@@ -307,11 +339,16 @@
                     <input type="radio" name="status" value="new"> Новое
                 </label>
                 <label>
-                    <input type="radio" name="status" value="processing"> В обработке
+                    <input type="radio" name="status" value="in_process"> В обработке
                 </label>
                 <label>
-                    <input type="radio" name="status" value="completed"> Выполнено
+                    <input type="radio" name="status" value="done"> Выполнено
                 </label>
+                <hr>
+                <br>
+                <p>+7 988 888 88 88</p>
+                <br>
+                <p>112</p>
             </div>
         </div>
     </div>
@@ -412,16 +449,19 @@
     };
 
     function showEventDetails(eventId) {
-        const notification = notifications[eventId - 1]; // Уведомление по индексу (если ID совпадает с порядковым номером)
-        
+        // Находим уведомление по UUID
+        const notification = notifications.find(notification => notification.id === eventId);
+
         if (!notification) {
             alert("Событие не найдено");
             return;
         }
-
+        console.log('Найденное событие:', notification); 
         // Обновление заголовка и адреса
+        const modal = document.getElementById('eventModal');
+        modal.dataset.eventId = eventId; // сохраняем ID события
         document.getElementById('event-title').textContent = notification.type;
-        document.getElementById('event-address').textContent = `${notification.description} (Координаты: ${notification.coordinates.join(", ")})`;
+        document.getElementById('event-address').textContent = `${notification.description} (Координаты: ${notification.coordinates})`;
 
         // Очистка старой карты
         const mapContainer = document.getElementById('map-modal');
@@ -429,13 +469,15 @@
 
         // TODO: aaa
         ymaps.ready(() => {
+            const coords = notification.coordinates.split(',').map(Number); // разделяем по запятой и преобразуем в числа
+
             const map = new ymaps.Map("map-modal", {
-                center: notification.coordinates,
+                center: coords,
                 zoom: 14,
                 controls: ["zoomControl", "fullscreenControl"]
             });
 
-            const placemark = new ymaps.Placemark(notification.coordinates, {
+            const placemark = new ymaps.Placemark(coords, {
                 hintContent: notification.type,
                 balloonContent: notification.description
             });
@@ -443,7 +485,7 @@
             map.geoObjects.add(placemark);
 
             // Геокодируем координаты, чтобы получить адрес
-            ymaps.geocode(notification.coordinates).then((res) => {
+            ymaps.geocode(coords).then((res) => {
                 const firstGeoObject = res.geoObjects.get(0);
 
                 // Получение адреса
@@ -480,39 +522,6 @@
             event.target.style.display = "none";
         }
     }
-
-    document.querySelectorAll('input[name="status"]').forEach(radio => {
-        radio.addEventListener('change', (event) => {
-            const newStatus = event.target.value;
-            const eventId = document.getElementById('event-title').dataset.eventId; // Храните ID события
-            const notificationIndex = notifications.findIndex(n => n.id === Number(eventId));
-
-            if (notificationIndex !== -1) {
-                notifications[notificationIndex].status = newStatus;
-
-                // Обновить UI после изменения
-                updateNotifications(notifications);
-            }
-        });
-    });
-
-    document.querySelectorAll('.menu-item').forEach(item => {
-        item.addEventListener('click', function() {
-            document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
-            this.classList.add('active');
-            
-            const filterType = this.dataset.type;
-            
-            document.querySelectorAll('.notification-item').forEach(notification => {
-                const categories = notification.dataset.category.split(' ');
-                if (filterType === 'all' || categories.includes(filterType)) {
-                    notification.classList.add('visible');
-                } else {
-                    notification.classList.remove('visible');
-                }
-            });
-        });
-    });
 </script>
 
 </body></html>

@@ -1,0 +1,164 @@
+<html>
+<head>
+  <base href="." />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Сообщить о дорожной ситуации</title>
+  <script src="https://api-maps.yandex.ru/2.1/?apikey=ваш_API_ключ&amp;lang=ru_RU" type="text/javascript"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; background: #f0f2f5; padding: 20px; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h1 { color: #2c3e50; margin-bottom: 20px; text-align: center; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 5px; color: #34495e; font-weight: 500; }
+    input[type="text"], input[type="datetime-local"], select, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
+    textarea { height: 120px; resize: vertical; }
+    .severity { display: flex; gap: 10px; margin-bottom: 20px; }
+    .severity label { display: flex; align-items: center; gap: 5px; }
+    button { background: #3498db; color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 16px; width: 100%; transition: background 0.3s; }
+    button:hover { background: #2980b9; }
+    #map { height: 300px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #ddd; }
+    .coordinates { font-size: 14px; color: #666; margin-top: 5px; }
+    .success-message { display: none; background: #2ecc71; color: white; padding: 15px; border-radius: 5px; text-align: center; margin-top: 20px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Сообщить о дорожной ситуации</h1>
+  
+  <form id="roadReport">
+    <div class="form-group">
+      <label for="incident-type">Тип происшествия:</label>
+      <select id="incident-type" required>
+        <option value="">Выберите тип происшествия</option>
+        <option value="accident">ДТП</option>
+        <option value="roadwork">Дорожные работы</option>
+        <option value="traffic">Затор</option>
+        <option value="hazard">Опасный участок</option>
+        <option value="other">Другое</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+        <label for="time">Время:</label>
+        <input type="time" id="time" required>
+    </div>
+
+    <div class="form-group">
+      <label for="location">Местоположение:</label>
+      <div id="map"></div>
+      <div class="coordinates" id="coordinates">Кликните на карту, чтобы указать место происшествия</div>
+    </div>
+
+    <div class="form-group">
+      <label>Серьезность ситуации:</label>
+      <div class="severity">
+        <label>
+          <input type="radio" name="severity" value="low" required>
+          Низкая
+        </label>
+        <label>
+          <input type="radio" name="severity" value="medium">
+          Средняя
+        </label>
+        <label>
+          <input type="radio" name="severity" value="high">
+          Высокая
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="description">Описание ситуации:</label>
+      <textarea id="description" placeholder="Опишите подробности ситуации..." required></textarea>
+    </div>
+
+    <button type="submit">Отправить сообщение</button>
+  </form>
+
+  <div class="success-message" id="successMessage">
+    Спасибо! Ваше сообщение успешно отправлено.
+  </div>
+</div>
+
+<script>
+    let selectedLocation = null;
+
+    ymaps.ready(init);
+    
+    function init() {
+      const map = new ymaps.Map("map", {
+          center: [45.0700, 38.976], // Начальная позиция карты
+          zoom: 11
+      });
+
+      let placemark;
+
+      map.events.add("click", function (e) {
+        const coords = e.get("coords");
+
+        if (placemark) {
+          placemark.geometry.setCoordinates(coords);
+        } else {
+          placemark = new ymaps.Placemark(coords, {}, { draggable: true });
+          map.geoObjects.add(placemark);
+
+          placemark.events.add("dragend", function () {
+            updateCoords(placemark.geometry.getCoordinates());
+          });
+        }
+
+        updateCoords(coords);
+      });
+
+      function updateCoords(coords) {
+        selectedLocation = { latitude: coords[0], longitude: coords[1] };
+        document.getElementById('coordinates').innerHTML = `Широта: ${coords[0]}, Долгота: ${coords[1]}`;
+      }
+    }
+
+    document.getElementById('roadReport').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      if (!selectedLocation) {
+        alert('Пожалуйста, укажите место происшествия на карте');
+        return;
+      }
+
+      const formData = {
+        incident_type: document.getElementById('incident-type').value,
+        time: document.getElementById('time').value,
+        location: selectedLocation,
+        severity: document.querySelector('input[name="severity"]:checked').value,
+        description: document.getElementById('description').value
+      };
+
+      // Отправка данных на сервер
+      fetch('http://127.0.0.1:8000', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('Данные успешно отправлены:', data);
+        document.getElementById('successMessage').style.display = 'block';
+        setTimeout(() => {
+          document.getElementById('roadReport').reset();
+          document.getElementById('successMessage').style.display = 'none';
+        }, 3000);
+      })
+      .catch(error => console.error('Ошибка отправки:', error));
+    });
+
+    // Устанавливаем текущее время в поле
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('time').value = `${hours}:${minutes}`;
+</script>
+</body>
+</html>

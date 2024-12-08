@@ -5,6 +5,34 @@ import re
 from datetime import datetime
 
 
+def from_api_to_data(data):
+    if data["type"] == "Дорожные работы":
+        data["type"] = "roadwork"
+    elif data["type"] == "ДТП":
+        data["type"] = "accident"
+    elif data["type"] == "Перекрытие движения":
+        data["type"] = "clozure"
+    else:
+        data["type"] = "other"
+
+    cur_time = datetime.now().strftime("%H:%M")
+
+    report = {
+        "incident_type": data["type"],
+        "time": cur_time,
+        "latitude": data["coordinates"][0],
+        "longitude": data["coordinates"][1],
+        "severity": "medium",
+        "description": data["description"],
+        "source": "api",
+        "status": "new",
+    }
+
+    res = [data["id"], report]
+
+    return res
+
+
 def get_accidents(redis):
     # Текущий момент времени в нужном формате
     timestamp = datetime.now().strftime("%Y.%m.%d.%H.%M.%S")
@@ -35,7 +63,9 @@ def get_accidents(redis):
     for url in urls:
         response = requests.get(url, headers=headers)
         responses.append(response)
+        print(response.text)
     results = []
+    results_schema = []
 
     for response in responses:
         if response.status_code == 200:
@@ -47,6 +77,7 @@ def get_accidents(redis):
 
                 event_list = [
                     {
+                        "id": event["properties"]["HotspotMetaData"]["id"][1:],
                         "type": event["properties"]["hintContent"],
                         "description": event["properties"]["description"],
                         "coordinates": event["geometry"]["coordinates"],
@@ -55,6 +86,15 @@ def get_accidents(redis):
                 ]
 
                 for event in event_list:
+                    results_schema.append(from_api_to_data(event))
+                    if event["type"] == "Дорожные работы":
+                        event["type"] = "roadwork"
+                    elif event["type"] == "ДТП":
+                        event["type"] = "accident"
+                    elif event["type"] == "Перекрытие движения":
+                        event["type"] = "clozure"
+                    else:
+                        event["type"] = "other"
                     results.append(event)
             except json.JSONDecodeError:
                 print("Ошибка декодирования JSON")
@@ -62,4 +102,4 @@ def get_accidents(redis):
                 print("Ошибка ключа")
         else:
             print(f"Ошибка: {response.status_code}")
-    return results
+    return results_schema
