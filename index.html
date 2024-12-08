@@ -231,6 +231,13 @@
             .catch(error => {
                 console.error("Ошибка получения данных:", error);
             });
+
+        const updateUrl = "http://127.0.0.1:8000/update";
+        fetch(updateUrl, {
+            method: 'POST'  // Или 'GET', если нужно
+        }).catch(error => {
+            console.error("Ошибка при отправке запроса на /update:", error);
+        });
     }
 
     function updateNotifications(notifications) {
@@ -305,11 +312,13 @@
     <div class="blocks-container">
         <div class="block" onclick="openModal('modal1')">
             <h3>Список мероприятий</h3>
+            <br>
             <p>Нажмите для просмотра событий и мероприятий</p>
         </div>
         <div class="block" onclick="openModal('modal2')">
-            <h3>Дорожная ситуация</h3>
-            <p>Информация о пробках и ремонтных работах</p>
+            <h3>Обращение от граждан</h3>
+            <br>
+            <p>Нажмите для просмотра обращений от граждан</p>
         </div>
         <script src="https://static.elfsight.com/platform/platform.js" async></script>
         <div class="elfsight-app-9e6506d2-f44e-418f-98dc-6b6a71d23916" data-elfsight-app-lazy></div>
@@ -369,7 +378,7 @@
 <div id="modal2" class="modal">
     <div class="modal-content">
         <span class="close" onclick="closeModal('modal2')">×</span>
-        <h2>Дорожная ситуация</h2>
+        <h2>Обращения от граждан</h2>
         <div class="notification-modal">
             <div class="notification-item visible" data-category="all new" onclick="showEventDetails(1)">Внеплановый ремонт дороги на ул. Ленина</div>
             <div class="notification-item visible" data-category="all new" onclick="showEventDetails(2)">Открытие новой станции метро</div>

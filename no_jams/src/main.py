@@ -20,6 +20,11 @@ app.add_middleware(
 )
 
 
+@app.delete("/clear_redis")
+def clear_redis(redis: redis.StrictRedis = Depends(get_redis)):
+    redis.flushdb()
+
+
 @app.post("/update")
 def update_accidents(redis: redis.StrictRedis = Depends(get_redis)):
     accidents_list = get_accidents_service(redis)
