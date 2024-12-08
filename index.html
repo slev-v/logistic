@@ -178,14 +178,8 @@
         cursor: pointer;
         font-size: 24px;
     }
-
-    #camera-feed {
-        width: 100%;
-        max-width: 400px;
-        height: 300px;
-        background: #ddd;
-        margin: 15px 0;
-        border-radius: 8px;
+    #eventModal {
+        z-index: 3000; /* eventModal будет самым верхним */
     }
 </style>
 </head>
@@ -222,7 +216,8 @@
                     time: details.time, // время
                     description: details.description, // описание
                     coordinates: `${details.latitude}, ${details.longitude}`, // координаты
-                    status: details.status // статус
+                    status: details.status, // статус
+                    source: details.source // источник
                 }));
 
                 // Сохранение данных в локальную константу
@@ -238,34 +233,33 @@
             });
     }
 
-    // Функция для обновления списка уведомлений
     function updateNotifications(notifications) {
+        // Колонка для уведомлений из API
         const notificationColumn = document.querySelector('.notification-column');
         notificationColumn.innerHTML = ''; // Очистить старые уведомления
 
-        notifications.forEach((notification, index) => {
-            const item = document.createElement('div');
-            item.className = `notification-item visible`;
-            item.dataset.category = notification.status;
-            item.dataset.eventId = notification.id; // добавляем ID события
-            item.textContent = `${notification.type} ${notification.coordinates}`;
-
-            console.log('Создан элемент уведомления:', item);
-
-            item.addEventListener('click', () => showEventDetails(notification.id));
-            notificationColumn.appendChild(item);
-        });
-
+        // Модальное окно для уведомлений от пользователя
         const notificationModal = document.querySelector('.notification-modal');
         notificationModal.innerHTML = ''; // Очистить старые уведомления
 
-        notifications.forEach((notification, index) => {
+        notifications.forEach(notification => {
+            // Создание элемента уведомления
             const item = document.createElement('div');
             item.className = `notification-item visible severity-${notification.severity}`;
             item.dataset.category = notification.status;
-            item.dataset.eventId = notification.id; // добавляем ID события
+            item.dataset.eventId = notification.id;
+            item.dataset.source = notification.source;
             item.textContent = `${notification.type} ${notification.coordinates}`;
-            notificationModal.appendChild(item);
+
+            // Привязка события клика
+            item.addEventListener('click', () => showEventDetails(notification.id));
+
+            // Разделение уведомлений по источникам
+            if (notification.source === 'api') {
+                notificationColumn.appendChild(item);
+            } else if (notification.source === 'user') {
+                notificationModal.appendChild(item);
+            }
         });
 
         console.log("Уведомления обновлены в UI:", notifications);
